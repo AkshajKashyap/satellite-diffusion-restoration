@@ -1,285 +1,167 @@
 # Satellite Diffusion Restoration
 
-U-Net and DDPM satellite image restoration project for synthetic cloud, noise, and blur
-removal. The intended long-term target is EuroSAT-style RGB imagery, but the current
-milestones are fully runnable without downloaded data.
+Satellite image restoration benchmark with synthetic corruptions, EuroSAT data, a strong
+residual U-Net baseline, an experimental conditional DDPM, reports, FastAPI inference, and
+a Streamlit demo.
 
-## Current Milestones
+**Status:** the residual U-Net is the deployable restoration baseline. The conditional DDPM
+is implemented for research/debugging, but sampled DDPM restoration currently underperforms
+both the corrupted input and the U-Net.
 
-### 1. Data and Corruption Foundation
-
-The repository includes:
-
-- seedable tensor corruptions for Gaussian noise, rectangular masks, soft cloud-like blobs,
-  and Gaussian blur
-- a synthetic pseudo-satellite dataset that returns `(corrupted, clean)` tensor pairs
-- baseline MSE, PSNR, and SSIM metrics
-- comparison-grid visualization helpers
-- a smoke script that exercises the data, corruption, metrics, and visualization path
-
-### 2. U-Net Baseline
-
-The repository now includes a small supervised U-Net denoiser. It takes a corrupted RGB
-image tensor and predicts a cleaned RGB image tensor using MSE loss. The default model uses
-residual restoration:
+Suggested GitHub repo description:
 
 ```text
-restored = clamp(corrupted + predicted_residual, 0, 1)
+Satellite image restoration benchmark with synthetic corruptions, EuroSAT data, residual U-Net baseline, experimental conditional DDPM, metrics, reports, API, and Streamlit demo.
 ```
 
-Residual mode starts as an identity mapping, so the model begins at the corrupted-input
-baseline and learns corrections from there. Direct clean-image prediction is still
-available in the model, but residual mode is the default because the corrupted image is
-already a strong baseline.
+## Key Results
 
-Every evaluation reports both corrupted-input metrics and restored-model metrics. This is
-important: a denoiser is not useful unless it beats simply returning the corrupted input.
-In the current synthetic setup, a fresh evaluation run after baseline training produced:
+EuroSAT RGB images with synthetic corruptions, `200` sample evaluation:
 
-- corrupted input: MSE `0.027949`, PSNR `15.54 dB`, SSIM `0.4307`
-- restored model: MSE `0.007120`, PSNR `21.48 dB`, SSIM `0.4993`
-- improvement: MSE delta `+0.020829`, PSNR delta `+5.94 dB`
+| Method | MSE | PSNR | SSIM | Status |
+| --- | ---: | ---: | ---: | --- |
+| Corrupted input | 0.027718 | 15.57 dB | 0.4592 | Baseline |
+| Residual U-Net | 0.004265 | 23.70 dB | 0.5651 | Deployable default |
+| Sampled DDPM | 0.086399 | 10.63 dB | 0.0229 | Experimental, underperforms |
 
-These are smoke-test results on generated data, not a real satellite benchmark.
+DDPM one-step x0 at t=`10` reached MSE `0.001964`, PSNR `27.07 dB`, and SSIM `0.5954`,
+but this is diagnostic only because it uses `x_t` generated from the clean image. It is not
+a deployable restoration result.
 
-### 3. Optional EuroSAT Benchmark
+This project is about **satellite image restoration under synthetic corruptions**. It does
+not claim real-world cloud removal.
 
-The project also includes an optional EuroSAT RGB dataset wrapper. It uses real EuroSAT
-images as clean targets, applies the same synthetic corruption pipeline, and trains the
-same residual U-Net baseline. EuroSAT is not downloaded during tests and is only used when
-you run the EuroSAT scripts.
-
-The benchmark still uses synthetic corruptions. It is a real-image restoration benchmark,
-not proof that the model handles real clouds or atmospheric artifacts.
-
-Current EuroSAT smoke benchmark result with `1000` train samples, `200` validation samples,
-and `5` epochs:
-
-- corrupted input: MSE `0.027718`, PSNR `15.57 dB`, SSIM `0.4592`
-- restored model: MSE `0.004265`, PSNR `23.70 dB`, SSIM `0.5651`
-- improvement: MSE delta `+0.023453`, PSNR delta `+8.13 dB`
-
-### 4. Conditional DDPM Restoration
-
-The repository includes an experimental conditional DDPM restoration model. This is not
-unconditional image generation. The clean image is the target `x0`, the corrupted image is
-the conditioning input, the model predicts diffusion noise, and restoration is sampled
-iteratively from noise while conditioning on the corrupted image.
-
-The residual U-Net remains the supervised baseline. DDPM is not automatically better; it
-only matters if it beats the corrupted-input baseline and ideally approaches or beats the
-U-Net.
-
-Current EuroSAT DDPM result after a small CPU run with `1000` train samples, `200` eval
-samples, `10` epochs, EMA, DDIM sampling, and `100` diffusion timesteps:
-
-- corrupted input: MSE `0.027718`, PSNR `15.57 dB`, SSIM `0.4592`
-- DDPM one-step x0 t=`10`: MSE `0.001964`, PSNR `27.07 dB`, SSIM `0.5954`
-- DDPM sampled restored: MSE `0.086399`, PSNR `10.63 dB`, SSIM `0.0229`
-- U-Net restored: MSE `0.004265`, PSNR `23.70 dB`, SSIM `0.5651`
-
-The one-step result is diagnostic only because it uses `x_t` generated from the clean image.
-The deployable sampled DDPM is functional but not good yet. It currently underperforms both
-the corrupted input and the residual U-Net.
-
-## Setup
+## Quickstart
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pytest -q
+ruff check .
 ```
 
-## Data Smoke Run
+Run the synthetic data smoke test:
 
 ```bash
 python scripts/smoke_data_pipeline.py
 ```
 
-Expected output:
+## U-Net Baseline
 
-- a short terminal summary with MSE, PSNR, and SSIM for corrupted images against clean images
-- sample comparison grids in `outputs/samples/`, such as
-  `outputs/samples/synthetic_sample_00.png`
-
-## Train U-Net Baseline
-
-```bash
-python scripts/train_unet_baseline.py
-```
-
-Default training setup:
-
-- image size: `64`
-- train samples: `256`
-- validation samples: `64`
-- batch size: `16`
-- epochs: `8`
-- learning rate: `1e-3`
-- device: CPU by default
-- restoration mode: residual U-Net
-
-Expected outputs:
-
-- best checkpoint: `outputs/checkpoints/unet_baseline.pt`
-- epoch sample grids: `outputs/samples/unet_baseline_epoch_01.png`,
-  `outputs/samples/unet_baseline_epoch_02.png`, and later epoch files
-
-## Evaluate U-Net Baseline
-
-```bash
-python scripts/evaluate_unet_baseline.py
-```
-
-Expected outputs:
-
-- final MSE, PSNR, and SSIM printed in the terminal
-- corrupted-input baseline metrics printed alongside restored-model metrics
-- MSE and PSNR improvement deltas
-- evaluation sample grids in `outputs/samples/`, such as
-  `outputs/samples/unet_baseline_eval_00.png`
-
-## Tiny Overfit Sanity Check
-
-```bash
-python scripts/overfit_unet_tiny.py
-```
-
-This debugging script trains on one tiny fixed synthetic batch. It should drop the training
-loss meaningfully and save:
-
-- `outputs/samples/unet_tiny_overfit_before.png`
-- `outputs/samples/unet_tiny_overfit_after.png`
-
-If this script cannot overfit, the model, loss, optimizer, or target/input wiring likely
-has a bug.
-
-## Train U-Net On EuroSAT
-
-Download EuroSAT and train the residual U-Net:
-
-```bash
-python scripts/train_unet_eurosat.py --download
-```
-
-Useful smaller/faster run:
+Train on EuroSAT:
 
 ```bash
 python scripts/train_unet_eurosat.py --download --max-train-samples 1000 --max-val-samples 200 --epochs 5
 ```
 
-Expected outputs:
-
-- best checkpoint: `outputs/checkpoints/unet_eurosat.pt`
-- epoch sample grids: `outputs/samples/unet_eurosat_epoch_01.png` and later epoch files
-- printed corrupted-input metrics, restored-model metrics, and MSE/PSNR deltas
-
-If EuroSAT is already downloaded, omit `--download`.
-
-## Evaluate EuroSAT U-Net
-
-```bash
-python scripts/evaluate_unet_eurosat.py
-```
-
-Useful smaller/faster evaluation:
+Evaluate:
 
 ```bash
 python scripts/evaluate_unet_eurosat.py --max-samples 200
 ```
 
-Expected outputs:
+Expected deployable checkpoint:
 
-- final corrupted-input baseline metrics
-- final restored-model metrics
-- MSE and PSNR improvement deltas
-- sample grids such as `outputs/samples/unet_eurosat_eval_00.png`
+```text
+outputs/checkpoints/unet_eurosat.pt
+```
 
-If the dataset is missing, run:
+The residual U-Net predicts:
+
+```text
+restored = clamp(corrupted + predicted_residual, 0, 1)
+```
+
+Residual learning matters because the corrupted input is already close to the target, so
+the model learns a correction instead of relearning the whole image.
+
+## DDPM Experimental Path
+
+The conditional DDPM is not unconditional generation. It predicts diffusion noise from:
+
+- noised clean target `x_t`
+- timestep embedding
+- corrupted conditioning image
+
+Debug and train:
+
+```bash
+python scripts/overfit_ddpm_tiny.py
+python scripts/diagnose_ddpm_reconstruction.py
+python scripts/train_ddpm_synthetic.py
+python scripts/train_ddpm_eurosat.py --download --max-train-samples 1000 --max-val-samples 200 --epochs 10
+python scripts/evaluate_ddpm_eurosat.py --max-samples 200
+```
+
+DDPM is useful in this repo as a research component and negative-result case study. It must
+beat the corrupted-input baseline, and ideally the U-Net, before it should be treated as a
+restoration model.
+
+## API
+
+The API serves the residual U-Net only.
+
+```bash
+PYTHONPATH=src uvicorn satellite_diffusion_restoration.api.app:app --host 127.0.0.1 --port 8000
+```
+
+Client smoke helper:
+
+```bash
+python scripts/smoke_api.py
+```
+
+Endpoints:
+
+- `GET /health`
+- `POST /restore` with an uploaded image file
+
+If `outputs/checkpoints/unet_eurosat.pt` is missing, train it with:
 
 ```bash
 python scripts/train_unet_eurosat.py --download
 ```
 
-## Train DDPM On Synthetic Data
-
-Debug tiny DDPM overfit first:
+## Streamlit Demo
 
 ```bash
-python scripts/overfit_ddpm_tiny.py
+PYTHONPATH=src streamlit run streamlit_app.py
 ```
 
-Run one-step/full-sampling reconstruction diagnostics:
+The demo lets you upload an image, run U-Net restoration, and view the known EuroSAT
+benchmark table. DDPM is labeled experimental and is not the default demo model.
 
-```bash
-python scripts/diagnose_ddpm_reconstruction.py
-```
+## Reports
 
-Train the synthetic DDPM smoke model:
+- `reports/model_card.md`
+- `reports/project_summary.md`
+- `reports/unet_eurosat_plan.md`
+- `reports/unet_eurosat_results.md`
+- `reports/ddpm_method_notes.md`
+- `reports/ddpm_eurosat_results.md`
 
-```bash
-python scripts/train_ddpm_synthetic.py
-```
+## Repo Structure
 
-Expected outputs:
-
-- checkpoint: `outputs/checkpoints/ddpm_synthetic.pt`
-- sample grids: `outputs/samples/ddpm_synthetic_epoch_01.png` and later epoch files
-- printed corrupted-input metrics and DDPM sampled-restoration metrics
-
-This is a correctness smoke test, not a quality benchmark.
-
-## Train DDPM On EuroSAT
-
-```bash
-python scripts/train_ddpm_eurosat.py --download
-```
-
-If EuroSAT is already downloaded:
-
-```bash
-python scripts/train_ddpm_eurosat.py --max-train-samples 1000 --max-val-samples 200 --epochs 10
-```
-
-Expected outputs:
-
-- checkpoint: `outputs/checkpoints/ddpm_eurosat.pt`
-- sample grids: `outputs/samples/ddpm_eurosat_epoch_01.png` and later epoch files
-- printed corrupted-input metrics and DDPM sampled-restoration metrics
-- EMA weights saved in the checkpoint by default
-
-Per-epoch sampled validation uses a small subset by default because reverse diffusion is
-much slower than direct U-Net inference.
-
-## Evaluate EuroSAT DDPM
-
-```bash
-python scripts/evaluate_ddpm_eurosat.py
-```
-
-Useful smaller/faster evaluation:
-
-```bash
-python scripts/evaluate_ddpm_eurosat.py --max-samples 200
-```
-
-If `outputs/checkpoints/unet_eurosat.pt` exists, the evaluator also prints U-Net metrics on
-the same deterministic subset. It also prints one-step `x0` reconstruction diagnostics at
-selected timesteps.
-
-## Quality Checks
-
-```bash
-pytest -q
-ruff check .
+```text
+src/satellite_diffusion_restoration/
+  data/          synthetic data, EuroSAT wrapper, corruptions
+  evaluation/    metrics and visualization helpers
+  models/        residual U-Net, conditional U-Net, DDPM scheduler
+  training/      U-Net and diffusion training/evaluation loops
+  api/           FastAPI app
+  inference.py   deployable U-Net inference helpers
+scripts/         smoke, train, evaluate, and diagnostic commands
+reports/         model card and experiment summaries
+tests/           fast tests with no dataset downloads
 ```
 
 ## Limitations
 
-- synthetic runs are still smoke tests, not real benchmarks
-- EuroSAT runs use real clean images but still use synthetic corruptions
-- the default U-Net runs are intentionally small enough for local iteration
-- the DDPM implementation is experimental and currently underperforms the U-Net baseline
-- no FastAPI service yet
-- no Streamlit demo yet
-- no Kaggle credentials or external non-EuroSAT data are required
+- Benchmarks use synthetic corruptions, even on real EuroSAT images.
+- This does not claim real-world cloud removal, atmospheric correction, or geospatial
+  accuracy.
+- EuroSAT images are small RGB patches, not full satellite products.
+- The DDPM sampled restoration path is experimental and currently poor.
+- Generated checkpoints, downloaded data, and sample images are local artifacts and should
+  not be committed.
