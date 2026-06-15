@@ -8,6 +8,9 @@ def test_training_scripts_are_import_safe():
         "evaluate_unet_baseline.py",
         "train_unet_eurosat.py",
         "evaluate_unet_eurosat.py",
+        "train_ddpm_synthetic.py",
+        "train_ddpm_eurosat.py",
+        "evaluate_ddpm_eurosat.py",
         "overfit_unet_tiny.py",
     ]:
         script_path = Path("scripts") / script_name

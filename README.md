@@ -59,6 +59,27 @@ and `5` epochs:
 - restored model: MSE `0.004265`, PSNR `23.70 dB`, SSIM `0.5651`
 - improvement: MSE delta `+0.023453`, PSNR delta `+8.13 dB`
 
+### 4. Conditional DDPM Restoration
+
+The repository includes an experimental conditional DDPM restoration model. This is not
+unconditional image generation. The clean image is the target `x0`, the corrupted image is
+the conditioning input, the model predicts diffusion noise, and restoration is sampled
+iteratively from noise while conditioning on the corrupted image.
+
+The residual U-Net remains the supervised baseline. DDPM is not automatically better; it
+only matters if it beats the corrupted-input baseline and ideally approaches or beats the
+U-Net.
+
+Current EuroSAT DDPM result after a small CPU run with `1000` train samples, `200` eval
+samples, `5` epochs, and `100` diffusion timesteps:
+
+- corrupted input: MSE `0.027718`, PSNR `15.57 dB`, SSIM `0.4592`
+- DDPM restored: MSE `0.081368`, PSNR `10.90 dB`, SSIM `0.0264`
+- U-Net restored: MSE `0.004265`, PSNR `23.70 dB`, SSIM `0.5651`
+
+This DDPM is functional but not good yet. It currently underperforms both the corrupted
+input and the residual U-Net.
+
 ## Setup
 
 ```bash
@@ -178,6 +199,56 @@ If the dataset is missing, run:
 python scripts/train_unet_eurosat.py --download
 ```
 
+## Train DDPM On Synthetic Data
+
+```bash
+python scripts/train_ddpm_synthetic.py
+```
+
+Expected outputs:
+
+- checkpoint: `outputs/checkpoints/ddpm_synthetic.pt`
+- sample grids: `outputs/samples/ddpm_synthetic_epoch_01.png` and later epoch files
+- printed corrupted-input metrics and DDPM sampled-restoration metrics
+
+This is a correctness smoke test, not a quality benchmark.
+
+## Train DDPM On EuroSAT
+
+```bash
+python scripts/train_ddpm_eurosat.py --download
+```
+
+If EuroSAT is already downloaded:
+
+```bash
+python scripts/train_ddpm_eurosat.py --max-train-samples 1000 --max-val-samples 200 --epochs 5
+```
+
+Expected outputs:
+
+- checkpoint: `outputs/checkpoints/ddpm_eurosat.pt`
+- sample grids: `outputs/samples/ddpm_eurosat_epoch_01.png` and later epoch files
+- printed corrupted-input metrics and DDPM sampled-restoration metrics
+
+Per-epoch sampled validation uses a small subset by default because reverse diffusion is
+much slower than direct U-Net inference.
+
+## Evaluate EuroSAT DDPM
+
+```bash
+python scripts/evaluate_ddpm_eurosat.py
+```
+
+Useful smaller/faster evaluation:
+
+```bash
+python scripts/evaluate_ddpm_eurosat.py --max-samples 200
+```
+
+If `outputs/checkpoints/unet_eurosat.pt` exists, the evaluator also prints U-Net metrics on
+the same deterministic subset.
+
 ## Quality Checks
 
 ```bash
@@ -190,7 +261,7 @@ ruff check .
 - synthetic runs are still smoke tests, not real benchmarks
 - EuroSAT runs use real clean images but still use synthetic corruptions
 - the default U-Net runs are intentionally small enough for local iteration
-- no DDPM restoration or noise-prediction model yet
+- the DDPM implementation is experimental and currently underperforms the U-Net baseline
 - no FastAPI service yet
 - no Streamlit demo yet
 - no Kaggle credentials or external non-EuroSAT data are required
