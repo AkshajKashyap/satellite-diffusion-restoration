@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import os
 import sys
 from pathlib import Path
@@ -16,12 +17,16 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/satellite_diffusion_restoration_matp
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--train-samples", type=int, default=96)
+    parser.add_argument("--train-samples", type=int, default=128)
     parser.add_argument("--val-samples", type=int, default=8)
-    parser.add_argument("--epochs", type=int, default=2)
-    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--lr", type=float, default=3e-4)
-    parser.add_argument("--timesteps", type=int, default=40)
+    parser.add_argument("--timesteps", type=int, default=100)
+    parser.add_argument("--sampler", choices=["ddpm", "ddim"], default="ddim")
+    parser.add_argument("--sample-steps", type=int, default=25)
+    parser.add_argument("--disable-ema", action="store_true")
+    parser.add_argument("--ema-decay", type=float, default=0.995)
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
@@ -47,6 +52,7 @@ def main() -> None:
     from satellite_diffusion_restoration.training import (
         build_restoration_datasets,
         evaluate_diffusion,
+        EMAModel,
         sample_diffusion_restoration,
         save_checkpoint,
         train_diffusion_one_epoch,
@@ -78,6 +84,7 @@ def main() -> None:
     model = ConditionalUNet(base_channels=16, time_dim=64).to(device)
     scheduler = DDPMScheduler(timesteps=args.timesteps).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    ema = None if args.disable_ema else EMAModel(model, decay=args.ema_decay)
     checkpoint_path = PROJECT_ROOT / "outputs" / "checkpoints" / "ddpm_synthetic.pt"
     sample_dir = PROJECT_ROOT / "outputs" / "samples"
     best_mse = float("inf")
@@ -87,7 +94,8 @@ def main() -> None:
     print(
         "Config: "
         f"train={len(train_dataset)}, val={len(val_dataset)}, batch_size={args.batch_size}, "
-        f"epochs={args.epochs}, lr={args.lr}, timesteps={args.timesteps}"
+        f"epochs={args.epochs}, lr={args.lr}, timesteps={args.timesteps}, "
+        f"sampler={args.sampler}, sample_steps={args.sample_steps}, ema={ema is not None}"
     )
 
     for epoch in range(1, args.epochs + 1):
@@ -97,8 +105,17 @@ def main() -> None:
             train_loader,
             optimizer,
             device,
+            ema=ema,
         )
-        eval_result = evaluate_diffusion(model, scheduler, val_loader, device)
+        eval_model = _build_eval_model(model, ema, device)
+        eval_result = evaluate_diffusion(
+            eval_model,
+            scheduler,
+            val_loader,
+            device,
+            sampler=args.sampler,
+            sample_steps=args.sample_steps,
+        )
         metrics = eval_result.restoration
 
         if metrics.restored_mse < best_mse:
@@ -123,16 +140,22 @@ def main() -> None:
                     "base_channels": 16,
                     "time_dim": 64,
                     "scheduler": scheduler.state_dict(),
+                    "sampler": args.sampler,
+                    "sample_steps": args.sample_steps,
+                    "ema_decay": args.ema_decay if ema is not None else None,
                     "seed": args.seed,
                 },
+                ema_state_dict=ema.state_dict() if ema is not None else None,
             )
 
         corrupted, clean = val_dataset[0]
         restored = sample_diffusion_restoration(
-            model,
+            eval_model,
             scheduler,
             corrupted.unsqueeze(0),
             device,
+            sampler=args.sampler,
+            sample_steps=args.sample_steps,
         ).squeeze(0)
         sample_path = save_comparison_grid(
             clean=clean,
@@ -155,6 +178,14 @@ def main() -> None:
         )
 
     print(f"Best checkpoint: {checkpoint_path.relative_to(PROJECT_ROOT)}")
+
+
+def _build_eval_model(model, ema, device):
+    eval_model = copy.deepcopy(model).to(device)
+    if ema is not None:
+        ema.copy_to(eval_model)
+    eval_model.eval()
+    return eval_model
 
 
 if __name__ == "__main__":

@@ -11,6 +11,8 @@ def test_training_scripts_are_import_safe():
         "train_ddpm_synthetic.py",
         "train_ddpm_eurosat.py",
         "evaluate_ddpm_eurosat.py",
+        "overfit_ddpm_tiny.py",
+        "diagnose_ddpm_reconstruction.py",
         "overfit_unet_tiny.py",
     ]:
         script_path = Path("scripts") / script_name

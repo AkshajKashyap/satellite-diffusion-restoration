@@ -18,6 +18,7 @@ def save_checkpoint(
     history: dict[str, list[float]] | None = None,
     metrics: dict[str, float] | None = None,
     extra: dict[str, Any] | None = None,
+    ema_state_dict: dict[str, Any] | None = None,
 ) -> Path:
     """Save model state plus optional optimizer/history metadata."""
     checkpoint_path = Path(path)
@@ -32,6 +33,8 @@ def save_checkpoint(
     }
     if optimizer is not None:
         payload["optimizer_state_dict"] = optimizer.state_dict()
+    if ema_state_dict is not None:
+        payload["ema_state_dict"] = ema_state_dict
 
     torch.save(payload, checkpoint_path)
     return checkpoint_path

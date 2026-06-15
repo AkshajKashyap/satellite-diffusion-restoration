@@ -87,8 +87,15 @@ class DDPMScheduler:
         model: torch.nn.Module,
         corrupted: torch.Tensor,
         shape: tuple[int, int, int, int] | None = None,
+        sampler: str = "ddpm",
+        sample_steps: int | None = None,
     ) -> torch.Tensor:
         """Restore images by starting from noise and conditioning on corrupted inputs."""
+        if sampler == "ddim":
+            return self.sample_ddim(model, corrupted, shape=shape, sample_steps=sample_steps)
+        if sampler != "ddpm":
+            raise ValueError(f"Unknown sampler: {sampler!r}. Expected 'ddpm' or 'ddim'.")
+
         model_was_training = model.training
         model.eval()
         sample_shape = shape or corrupted.shape
@@ -103,6 +110,57 @@ class DDPMScheduler:
             )
             predicted_noise = model(x_t, corrupted, timesteps)
             x_t = self.p_sample(x_t, timesteps, predicted_noise)
+
+        if model_was_training:
+            model.train()
+        return x_t.clamp(0.0, 1.0)
+
+    @torch.no_grad()
+    def sample_ddim(
+        self,
+        model: torch.nn.Module,
+        corrupted: torch.Tensor,
+        shape: tuple[int, int, int, int] | None = None,
+        sample_steps: int | None = None,
+    ) -> torch.Tensor:
+        """Deterministic DDIM-style sampling with fewer reverse steps."""
+        model_was_training = model.training
+        model.eval()
+        sample_shape = shape or corrupted.shape
+        step_count = min(sample_steps or self.timesteps, self.timesteps)
+        step_indices = torch.linspace(
+            self.timesteps - 1,
+            0,
+            step_count,
+            device=corrupted.device,
+        ).round().long()
+        step_indices = torch.unique_consecutive(step_indices)
+        x_t = torch.randn(sample_shape, device=corrupted.device, dtype=corrupted.dtype)
+
+        for index, step in enumerate(step_indices):
+            timesteps = torch.full(
+                (sample_shape[0],),
+                int(step.item()),
+                device=corrupted.device,
+                dtype=torch.long,
+            )
+            predicted_noise = model(x_t, corrupted, timesteps)
+            predicted_x0 = self.predict_x0_from_noise(
+                x_t,
+                timesteps,
+                predicted_noise,
+            ).clamp(0.0, 1.0)
+
+            if index == len(step_indices) - 1:
+                x_t = predicted_x0
+                continue
+
+            previous_step = step_indices[index + 1]
+            alpha_bar_previous = self.alpha_bar[previous_step].view(1, 1, 1, 1)
+            x_t = (
+                torch.sqrt(alpha_bar_previous) * predicted_x0
+                + torch.sqrt(1.0 - alpha_bar_previous) * predicted_noise
+            )
 
         if model_was_training:
             model.train()

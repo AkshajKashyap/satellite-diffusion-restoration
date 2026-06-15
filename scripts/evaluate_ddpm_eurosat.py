@@ -21,6 +21,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--unet-checkpoint", default="outputs/checkpoints/unet_eurosat.pt")
     parser.add_argument("--max-samples", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--sampler", choices=["ddpm", "ddim"], default="ddim")
+    parser.add_argument("--sample-steps", type=int, default=25)
+    parser.add_argument("--diagnostic-timesteps", default="10,50,90")
+    parser.add_argument("--disable-ema", action="store_true")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--seed", type=int, default=2024)
     return parser.parse_args()
@@ -46,8 +50,10 @@ def main() -> None:
     from satellite_diffusion_restoration.models import ConditionalUNet, DDPMScheduler, UNet
     from satellite_diffusion_restoration.training import (
         build_restoration_datasets,
+        EMAModel,
         evaluate,
         evaluate_diffusion_restoration,
+        evaluate_one_step_x0_reconstruction,
         load_checkpoint,
         sample_diffusion_restoration,
     )
@@ -71,6 +77,12 @@ def main() -> None:
         time_dim=extra.get("time_dim", 64),
     ).to(device)
     checkpoint = load_checkpoint(checkpoint_path, model=model, device=device)
+    using_ema = False
+    if not args.disable_ema and "ema_state_dict" in checkpoint:
+        ema = EMAModel(model)
+        ema.load_state_dict(checkpoint["ema_state_dict"], device=device)
+        ema.copy_to(model)
+        using_ema = True
 
     try:
         _, dataset = build_restoration_datasets(
@@ -96,7 +108,25 @@ def main() -> None:
         num_workers=0,
         pin_memory=device.type == "cuda",
     )
-    ddpm_metrics = evaluate_diffusion_restoration(model, scheduler, dataloader, device)
+    ddpm_metrics = evaluate_diffusion_restoration(
+        model,
+        scheduler,
+        dataloader,
+        device,
+        sampler=args.sampler,
+        sample_steps=args.sample_steps,
+    )
+    diagnostic_timesteps = _parse_timesteps(args.diagnostic_timesteps)
+    one_step_metrics = {
+        timestep: evaluate_one_step_x0_reconstruction(
+            model,
+            scheduler,
+            dataloader,
+            device,
+            timestep=timestep,
+        )
+        for timestep in diagnostic_timesteps
+    }
 
     unet_metrics = None
     unet_checkpoint_path = PROJECT_ROOT / args.unet_checkpoint
@@ -121,6 +151,8 @@ def main() -> None:
             scheduler,
             corrupted.unsqueeze(0),
             device,
+            sampler=args.sampler,
+            sample_steps=args.sample_steps,
         ).squeeze(0)
         saved_paths.append(
             save_comparison_grid(
@@ -135,9 +167,24 @@ def main() -> None:
     print("EuroSAT conditional DDPM evaluation")
     print(f"Checkpoint: {checkpoint_path.relative_to(PROJECT_ROOT)}")
     print(f"Checkpoint epoch: {checkpoint.get('epoch', 'unknown')}")
+    print(f"Using EMA weights: {using_ema}")
+    print(f"Sampler: {args.sampler}, sample_steps={args.sample_steps}")
     print(f"Samples: {len(dataset)}")
     _print_metric_block("Corrupted input", ddpm_metrics.corrupted_mse, ddpm_metrics.corrupted_psnr, ddpm_metrics.corrupted_ssim)
-    _print_metric_block("DDPM restored", ddpm_metrics.restored_mse, ddpm_metrics.restored_psnr, ddpm_metrics.restored_ssim)
+    for timestep, metrics in one_step_metrics.items():
+        _print_metric_block(
+            f"DDPM one-step x0 t={timestep}",
+            metrics.restored_mse,
+            metrics.restored_psnr,
+            metrics.restored_ssim,
+        )
+        print(
+            f"One-step t={timestep} improvement vs corrupted: "
+            f"MSE delta={metrics.mse_delta:+.6f}, "
+            f"PSNR delta={metrics.psnr_delta:+.2f} dB"
+        )
+
+    _print_metric_block("DDPM sampled restored", ddpm_metrics.restored_mse, ddpm_metrics.restored_psnr, ddpm_metrics.restored_ssim)
     print(
         "DDPM improvement vs corrupted: "
         f"MSE delta={ddpm_metrics.mse_delta:+.6f}, "
@@ -152,10 +199,16 @@ def main() -> None:
             unet_metrics.restored_ssim,
         )
         print(
-            "DDPM vs U-Net: "
+            "DDPM sampled vs U-Net: "
             f"MSE delta={unet_metrics.restored_mse - ddpm_metrics.restored_mse:+.6f}, "
             f"PSNR delta={ddpm_metrics.restored_psnr - unet_metrics.restored_psnr:+.2f} dB"
         )
+        for timestep, metrics in one_step_metrics.items():
+            print(
+                f"One-step t={timestep} vs U-Net: "
+                f"MSE delta={unet_metrics.restored_mse - metrics.restored_mse:+.6f}, "
+                f"PSNR delta={metrics.restored_psnr - unet_metrics.restored_psnr:+.2f} dB"
+            )
     else:
         print(f"U-Net checkpoint not found at {unet_checkpoint_path}; skipped U-Net comparison.")
 
@@ -167,6 +220,10 @@ def main() -> None:
 def _print_metric_block(label: str, mse_value: float, psnr_value: float, ssim_value: float | None) -> None:
     ssim_text = "n/a" if ssim_value is None else f"{ssim_value:.4f}"
     print(f"{label}: MSE={mse_value:.6f}, PSNR={psnr_value:.2f} dB, SSIM={ssim_text}")
+
+
+def _parse_timesteps(value: str) -> tuple[int, ...]:
+    return tuple(int(part.strip()) for part in value.split(",") if part.strip())
 
 
 if __name__ == "__main__":

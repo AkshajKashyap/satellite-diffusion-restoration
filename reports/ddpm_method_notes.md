@@ -57,6 +57,19 @@ sampled restoration will beat the corrupted input.
 - Small portfolio-scale training runs may underfit the reverse process badly.
 - Evaluating sampled restorations is much more expensive than evaluating a direct U-Net.
 
+## Practical Sampling And EMA
+
+The training objective is still DDPM noise prediction. For practical evaluation, the repo
+also supports deterministic DDIM-style sampling:
+
+```bash
+python scripts/evaluate_ddpm_eurosat.py --sampler ddim --sample-steps 25
+```
+
+DDIM is a sampling shortcut, not a new training objective. DDPM training scripts also keep
+an exponential moving average of model weights by default and use the EMA model for
+sampling/evaluation when available.
+
 ## Meaningful Win Criteria
 
 Before DDPM should be considered useful for this project, it should:
@@ -68,3 +81,27 @@ Before DDPM should be considered useful for this project, it should:
 - show gains on held-out real EuroSAT images with synthetic corruptions
 
 The current DDPM implementation is functional but does not meet those quality criteria yet.
+
+## DDPM Debugging Findings
+
+This milestone added three debugging tools:
+
+- `scripts/overfit_ddpm_tiny.py`
+- `scripts/diagnose_ddpm_reconstruction.py`
+- one-step `x0` diagnostics in `scripts/evaluate_ddpm_eurosat.py`
+
+Findings:
+
+- Tiny overfit succeeded: fixed-batch noise loss dropped from `0.992377` to `0.097457`.
+- Synthetic one-step reconstruction at low noise improved over corrupted input after the
+  updated synthetic run: t=`10` MSE `0.011391` vs corrupted MSE `0.017860`.
+- EuroSAT one-step reconstruction at low noise was strong: t=`10` MSE `0.001964`, PSNR
+  `27.07 dB`, SSIM `0.5954`.
+- EuroSAT high-noise one-step reconstruction still failed: t=`90` MSE `0.091859`, PSNR
+  `10.37 dB`.
+- EuroSAT full sampled DDPM still failed: MSE `0.086399`, PSNR `10.63 dB`, SSIM `0.0229`.
+- DDPM does not beat the corrupted input and does not beat the residual U-Net.
+
+Interpretation: the implementation can learn the noise-prediction objective, especially at
+low noise levels, but the current training budget/model/sampling setup does not learn a
+usable high-noise denoising trajectory from random noise.

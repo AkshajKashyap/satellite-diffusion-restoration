@@ -71,14 +71,16 @@ only matters if it beats the corrupted-input baseline and ideally approaches or 
 U-Net.
 
 Current EuroSAT DDPM result after a small CPU run with `1000` train samples, `200` eval
-samples, `5` epochs, and `100` diffusion timesteps:
+samples, `10` epochs, EMA, DDIM sampling, and `100` diffusion timesteps:
 
 - corrupted input: MSE `0.027718`, PSNR `15.57 dB`, SSIM `0.4592`
-- DDPM restored: MSE `0.081368`, PSNR `10.90 dB`, SSIM `0.0264`
+- DDPM one-step x0 t=`10`: MSE `0.001964`, PSNR `27.07 dB`, SSIM `0.5954`
+- DDPM sampled restored: MSE `0.086399`, PSNR `10.63 dB`, SSIM `0.0229`
 - U-Net restored: MSE `0.004265`, PSNR `23.70 dB`, SSIM `0.5651`
 
-This DDPM is functional but not good yet. It currently underperforms both the corrupted
-input and the residual U-Net.
+The one-step result is diagnostic only because it uses `x_t` generated from the clean image.
+The deployable sampled DDPM is functional but not good yet. It currently underperforms both
+the corrupted input and the residual U-Net.
 
 ## Setup
 
@@ -201,6 +203,20 @@ python scripts/train_unet_eurosat.py --download
 
 ## Train DDPM On Synthetic Data
 
+Debug tiny DDPM overfit first:
+
+```bash
+python scripts/overfit_ddpm_tiny.py
+```
+
+Run one-step/full-sampling reconstruction diagnostics:
+
+```bash
+python scripts/diagnose_ddpm_reconstruction.py
+```
+
+Train the synthetic DDPM smoke model:
+
 ```bash
 python scripts/train_ddpm_synthetic.py
 ```
@@ -222,7 +238,7 @@ python scripts/train_ddpm_eurosat.py --download
 If EuroSAT is already downloaded:
 
 ```bash
-python scripts/train_ddpm_eurosat.py --max-train-samples 1000 --max-val-samples 200 --epochs 5
+python scripts/train_ddpm_eurosat.py --max-train-samples 1000 --max-val-samples 200 --epochs 10
 ```
 
 Expected outputs:
@@ -230,6 +246,7 @@ Expected outputs:
 - checkpoint: `outputs/checkpoints/ddpm_eurosat.pt`
 - sample grids: `outputs/samples/ddpm_eurosat_epoch_01.png` and later epoch files
 - printed corrupted-input metrics and DDPM sampled-restoration metrics
+- EMA weights saved in the checkpoint by default
 
 Per-epoch sampled validation uses a small subset by default because reverse diffusion is
 much slower than direct U-Net inference.
@@ -247,7 +264,8 @@ python scripts/evaluate_ddpm_eurosat.py --max-samples 200
 ```
 
 If `outputs/checkpoints/unet_eurosat.pt` exists, the evaluator also prints U-Net metrics on
-the same deterministic subset.
+the same deterministic subset. It also prints one-step `x0` reconstruction diagnostics at
+selected timesteps.
 
 ## Quality Checks
 
