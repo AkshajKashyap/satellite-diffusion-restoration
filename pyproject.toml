@@ -1,0 +1,13 @@
+[project]
+name = "satellite-diffusion-restoration"
+version = "0.1.0"
+description = "U-Net and DDPM satellite image restoration project."
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
