@@ -6,6 +6,8 @@ def test_training_scripts_are_import_safe():
     for script_name in [
         "train_unet_baseline.py",
         "evaluate_unet_baseline.py",
+        "train_unet_eurosat.py",
+        "evaluate_unet_eurosat.py",
         "overfit_unet_tiny.py",
     ]:
         script_path = Path("scripts") / script_name

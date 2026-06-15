@@ -42,6 +42,23 @@ In the current synthetic setup, a fresh evaluation run after baseline training p
 
 These are smoke-test results on generated data, not a real satellite benchmark.
 
+### 3. Optional EuroSAT Benchmark
+
+The project also includes an optional EuroSAT RGB dataset wrapper. It uses real EuroSAT
+images as clean targets, applies the same synthetic corruption pipeline, and trains the
+same residual U-Net baseline. EuroSAT is not downloaded during tests and is only used when
+you run the EuroSAT scripts.
+
+The benchmark still uses synthetic corruptions. It is a real-image restoration benchmark,
+not proof that the model handles real clouds or atmospheric artifacts.
+
+Current EuroSAT smoke benchmark result with `1000` train samples, `200` validation samples,
+and `5` epochs:
+
+- corrupted input: MSE `0.027718`, PSNR `15.57 dB`, SSIM `0.4592`
+- restored model: MSE `0.004265`, PSNR `23.70 dB`, SSIM `0.5651`
+- improvement: MSE delta `+0.023453`, PSNR delta `+8.13 dB`
+
 ## Setup
 
 ```bash
@@ -114,6 +131,53 @@ loss meaningfully and save:
 If this script cannot overfit, the model, loss, optimizer, or target/input wiring likely
 has a bug.
 
+## Train U-Net On EuroSAT
+
+Download EuroSAT and train the residual U-Net:
+
+```bash
+python scripts/train_unet_eurosat.py --download
+```
+
+Useful smaller/faster run:
+
+```bash
+python scripts/train_unet_eurosat.py --download --max-train-samples 1000 --max-val-samples 200 --epochs 5
+```
+
+Expected outputs:
+
+- best checkpoint: `outputs/checkpoints/unet_eurosat.pt`
+- epoch sample grids: `outputs/samples/unet_eurosat_epoch_01.png` and later epoch files
+- printed corrupted-input metrics, restored-model metrics, and MSE/PSNR deltas
+
+If EuroSAT is already downloaded, omit `--download`.
+
+## Evaluate EuroSAT U-Net
+
+```bash
+python scripts/evaluate_unet_eurosat.py
+```
+
+Useful smaller/faster evaluation:
+
+```bash
+python scripts/evaluate_unet_eurosat.py --max-samples 200
+```
+
+Expected outputs:
+
+- final corrupted-input baseline metrics
+- final restored-model metrics
+- MSE and PSNR improvement deltas
+- sample grids such as `outputs/samples/unet_eurosat_eval_00.png`
+
+If the dataset is missing, run:
+
+```bash
+python scripts/train_unet_eurosat.py --download
+```
+
 ## Quality Checks
 
 ```bash
@@ -123,10 +187,10 @@ ruff check .
 
 ## Limitations
 
-- training and evaluation are synthetic-only
-- the default U-Net run is tiny CPU training, not a real satellite benchmark
-- no real EuroSAT loader or downloader yet
+- synthetic runs are still smoke tests, not real benchmarks
+- EuroSAT runs use real clean images but still use synthetic corruptions
+- the default U-Net runs are intentionally small enough for local iteration
 - no DDPM restoration or noise-prediction model yet
 - no FastAPI service yet
 - no Streamlit demo yet
-- no GPU-specific workflow is required or tuned yet
+- no Kaggle credentials or external non-EuroSAT data are required
