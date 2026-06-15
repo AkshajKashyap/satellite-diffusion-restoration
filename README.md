@@ -1,12 +1,14 @@
 # Satellite Diffusion Restoration
 
 U-Net and DDPM satellite image restoration project for synthetic cloud, noise, and blur
-removal. The intended long-term target is EuroSAT-style RGB imagery, but the first
-milestone is fully runnable without downloaded data.
+removal. The intended long-term target is EuroSAT-style RGB imagery, but the current
+milestones are fully runnable without downloaded data.
 
-## First Milestone
+## Current Milestones
 
-This repository currently provides a clean foundation for future restoration training:
+### 1. Data and Corruption Foundation
+
+The repository includes:
 
 - seedable tensor corruptions for Gaussian noise, rectangular masks, soft cloud-like blobs,
   and Gaussian blur
@@ -15,8 +17,12 @@ This repository currently provides a clean foundation for future restoration tra
 - comparison-grid visualization helpers
 - a smoke script that exercises the data, corruption, metrics, and visualization path
 
-It does not train a model yet. The goal is to make the data path testable before adding a
-U-Net or diffusion model.
+### 2. U-Net Baseline
+
+The repository now includes a small supervised U-Net denoiser. It takes a corrupted RGB
+image tensor and predicts the clean RGB image tensor using MSE loss. The default training
+run is intentionally tiny and CPU-compatible, so it is useful as a pipeline smoke test,
+not as a real benchmark.
 
 ## Setup
 
@@ -26,7 +32,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Smoke Run
+## Data Smoke Run
 
 ```bash
 python scripts/smoke_data_pipeline.py
@@ -38,6 +44,41 @@ Expected output:
 - sample comparison grids in `outputs/samples/`, such as
   `outputs/samples/synthetic_sample_00.png`
 
+## Train U-Net Baseline
+
+```bash
+python scripts/train_unet_baseline.py
+```
+
+Default training setup:
+
+- image size: `64`
+- train samples: `128`
+- validation samples: `32`
+- batch size: `16`
+- epochs: `3`
+- learning rate: `1e-3`
+- device: CPU by default
+
+Expected outputs:
+
+- best checkpoint: `outputs/checkpoints/unet_baseline.pt`
+- epoch sample grids: `outputs/samples/unet_baseline_epoch_01.png`,
+  `outputs/samples/unet_baseline_epoch_02.png`, and
+  `outputs/samples/unet_baseline_epoch_03.png`
+
+## Evaluate U-Net Baseline
+
+```bash
+python scripts/evaluate_unet_baseline.py
+```
+
+Expected outputs:
+
+- final MSE, PSNR, and SSIM printed in the terminal
+- evaluation sample grids in `outputs/samples/`, such as
+  `outputs/samples/unet_baseline_eval_00.png`
+
 ## Quality Checks
 
 ```bash
@@ -45,12 +86,12 @@ pytest -q
 ruff check .
 ```
 
-## Not Implemented Yet
+## Limitations
 
-- U-Net restoration model
-- DDPM restoration or noise-prediction model
-- training loops
-- FastAPI service
-- Streamlit demo
-- real EuroSAT loader
-- GPU-specific workflows
+- training and evaluation are synthetic-only
+- the default U-Net run is tiny CPU training, not a real satellite benchmark
+- no real EuroSAT loader or downloader yet
+- no DDPM restoration or noise-prediction model yet
+- no FastAPI service yet
+- no Streamlit demo yet
+- no GPU-specific workflow is required or tuned yet
