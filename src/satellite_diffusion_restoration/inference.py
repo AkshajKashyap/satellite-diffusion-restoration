@@ -29,7 +29,11 @@ class MissingCheckpointError(FileNotFoundError):
 
 def resolve_checkpoint_path(checkpoint_path: str | Path | None = None) -> Path:
     """Return the checkpoint path, honoring an optional explicit override."""
-    return Path(checkpoint_path) if checkpoint_path is not None else DEFAULT_UNET_CHECKPOINT
+    if checkpoint_path is not None:
+        return Path(checkpoint_path)
+
+    env_path = os.environ.get("MODEL_CHECKPOINT")
+    return Path(env_path) if env_path else DEFAULT_UNET_CHECKPOINT
 
 
 def load_unet_checkpoint(

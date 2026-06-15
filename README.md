@@ -47,6 +47,17 @@ Run the synthetic data smoke test:
 python scripts/smoke_data_pipeline.py
 ```
 
+Makefile shortcuts are also available:
+
+```bash
+make install
+make test
+make lint
+make smoke-data
+make train-unet-synthetic
+make eval-unet-eurosat
+```
+
 ## U-Net Baseline
 
 Train on EuroSAT:
@@ -112,6 +123,17 @@ Client smoke helper:
 python scripts/smoke_api.py
 ```
 
+Docker API image:
+
+```bash
+docker build -t satellite-restoration-api .
+docker run --rm -p 8000:8000 satellite-restoration-api
+```
+
+The Docker image excludes downloaded EuroSAT data, checkpoints, and generated samples by
+default. Mount or copy a trained U-Net checkpoint if you want `/restore` to run inside the
+container.
+
 Endpoints:
 
 - `GET /health`
@@ -136,6 +158,9 @@ benchmark table. DDPM is labeled experimental and is not the default demo model.
 
 - `reports/model_card.md`
 - `reports/project_summary.md`
+- `reports/interview_notes.md`
+- `reports/repo_health_check.md`
+- `reports/final_results.json`
 - `reports/unet_eurosat_plan.md`
 - `reports/unet_eurosat_results.md`
 - `reports/ddpm_method_notes.md`

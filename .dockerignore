@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.env
+data/raw/
+data/processed/*
+outputs/checkpoints/*
+outputs/samples/*
+*.pt
+*.pth
+*.ckpt
+.DS_Store
+.vscode/

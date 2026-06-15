@@ -10,5 +10,6 @@ pyyaml
 fastapi
 uvicorn
 streamlit
+requests
 pytest
 ruff

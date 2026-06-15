@@ -1,0 +1,71 @@
+{
+  "project": "satellite-diffusion-restoration",
+  "task": "satellite image restoration under synthetic corruptions",
+  "synthetic": {
+    "evaluation_samples": 32,
+    "corrupted_input": {
+      "mse": 0.027949,
+      "psnr_db": 15.54,
+      "ssim": 0.4307
+    },
+    "residual_unet": {
+      "mse": 0.007120,
+      "psnr_db": 21.48,
+      "ssim": 0.4993,
+      "checkpoint": "outputs/checkpoints/unet_baseline.pt"
+    },
+    "sampled_ddpm_experimental": {
+      "mse": 0.222139,
+      "psnr_db": 6.53,
+      "ssim": 0.0031,
+      "checkpoint": "outputs/checkpoints/ddpm_synthetic.pt"
+    }
+  },
+  "eurosat": {
+    "train_samples_unet": 1000,
+    "eval_samples": 200,
+    "corrupted_input": {
+      "mse": 0.027718,
+      "psnr_db": 15.57,
+      "ssim": 0.4592
+    },
+    "residual_unet": {
+      "mse": 0.004265,
+      "psnr_db": 23.70,
+      "ssim": 0.5651,
+      "checkpoint": "outputs/checkpoints/unet_eurosat.pt"
+    },
+    "sampled_ddpm_experimental": {
+      "mse": 0.086399,
+      "psnr_db": 10.63,
+      "ssim": 0.0229,
+      "checkpoint": "outputs/checkpoints/ddpm_eurosat.pt"
+    },
+    "ddpm_one_step_t10_diagnostic": {
+      "mse": 0.001964,
+      "psnr_db": 27.07,
+      "ssim": 0.5954,
+      "caveat": "Diagnostic only; x_t is generated from the clean image."
+    }
+  },
+  "sample_output_paths": {
+    "unet_eurosat": [
+      "outputs/samples/unet_eurosat_eval_00.png",
+      "outputs/samples/unet_eurosat_eval_01.png",
+      "outputs/samples/unet_eurosat_eval_02.png",
+      "outputs/samples/unet_eurosat_eval_03.png"
+    ],
+    "ddpm_eurosat": [
+      "outputs/samples/ddpm_eurosat_eval_00.png",
+      "outputs/samples/ddpm_eurosat_eval_01.png",
+      "outputs/samples/ddpm_eurosat_eval_02.png",
+      "outputs/samples/ddpm_eurosat_eval_03.png"
+    ]
+  },
+  "caveats": [
+    "Benchmarks use synthetic corruptions, even on real EuroSAT images.",
+    "This project does not claim real-world cloud removal.",
+    "DDPM sampled restoration is experimental and currently underperforms.",
+    "Downloaded data, checkpoints, and generated samples are ignored local artifacts."
+  ]
+}

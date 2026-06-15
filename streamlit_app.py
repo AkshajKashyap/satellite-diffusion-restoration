@@ -26,6 +26,8 @@ BENCHMARK_ROWS = [
     {"Model": "Sampled DDPM (experimental)", "MSE": 0.086399, "PSNR": 10.63, "SSIM": 0.0229},
 ]
 
+name = "streamlit_app"
+
 
 def main() -> None:
     st.set_page_config(page_title="Satellite Restoration", layout="wide")
@@ -42,7 +44,7 @@ def main() -> None:
         "real-world cloud removal."
     )
 
-    checkpoint_path = Path(DEFAULT_UNET_CHECKPOINT)
+    checkpoint_path = Path(os.environ.get("MODEL_CHECKPOINT", DEFAULT_UNET_CHECKPOINT))
     if not checkpoint_path.exists():
         st.warning(f"Missing U-Net checkpoint: `{checkpoint_path}`")
         st.code(TRAIN_UNET_COMMAND, language="bash")
@@ -58,7 +60,13 @@ def main() -> None:
 
     if st.button("Run U-Net Restoration", type="primary"):
         try:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            device_name = os.environ.get("MODEL_DEVICE", "auto")
+            if device_name == "auto":
+                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            elif device_name == "cuda" and not torch.cuda.is_available():
+                device = torch.device("cpu")
+            else:
+                device = torch.device(device_name)
             restored, _ = restore_image(image, checkpoint_path=checkpoint_path, device=device)
             right.image(restored, caption="Residual U-Net restoration", use_container_width=True)
         except MissingCheckpointError as exc:

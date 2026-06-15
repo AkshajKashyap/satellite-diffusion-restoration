@@ -29,7 +29,20 @@ app = FastAPI(
 
 def get_checkpoint_path() -> Path:
     """Resolve checkpoint path from environment or default."""
-    return Path(os.environ.get("SATELLITE_RESTORATION_CHECKPOINT", DEFAULT_UNET_CHECKPOINT))
+    env_path = os.environ.get("MODEL_CHECKPOINT") or os.environ.get(
+        "SATELLITE_RESTORATION_CHECKPOINT"
+    )
+    return Path(env_path) if env_path else DEFAULT_UNET_CHECKPOINT
+
+
+def get_device() -> torch.device:
+    """Resolve model device from MODEL_DEVICE."""
+    device_name = os.environ.get("MODEL_DEVICE", "auto")
+    if device_name == "auto":
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if device_name == "cuda" and not torch.cuda.is_available():
+        return torch.device("cpu")
+    return torch.device(device_name)
 
 
 @app.get("/health")
@@ -56,8 +69,7 @@ async def restore(file: UploadFile = File(...)) -> Response:
         raise HTTPException(status_code=400, detail="Uploaded file is not a readable image.") from exc
 
     try:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        restored, _ = restore_image(image, checkpoint_path=checkpoint_path, device=device)
+        restored, _ = restore_image(image, checkpoint_path=checkpoint_path, device=get_device())
     except MissingCheckpointError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

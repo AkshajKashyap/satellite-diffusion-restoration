@@ -59,7 +59,7 @@ def test_missing_checkpoint_error_is_clear(tmp_path):
 
 def test_fastapi_health_endpoint(monkeypatch, tmp_path):
     missing_checkpoint = tmp_path / "missing.pt"
-    monkeypatch.setenv("SATELLITE_RESTORATION_CHECKPOINT", str(missing_checkpoint))
+    monkeypatch.setenv("MODEL_CHECKPOINT", str(missing_checkpoint))
 
     payload = health()
 
@@ -77,7 +77,7 @@ def test_fastapi_routes_are_registered():
 
 def test_fastapi_restore_missing_checkpoint(monkeypatch, tmp_path):
     missing_checkpoint = tmp_path / "missing.pt"
-    monkeypatch.setenv("SATELLITE_RESTORATION_CHECKPOINT", str(missing_checkpoint))
+    monkeypatch.setenv("MODEL_CHECKPOINT", str(missing_checkpoint))
     image = Image.new("RGB", (16, 16), color=(50, 90, 120))
     buffer = BytesIO()
     image.save(buffer, format="PNG")
