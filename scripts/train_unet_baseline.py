@@ -35,11 +35,13 @@ def main() -> None:
     seed_everything(seed)
 
     image_size = 64
-    train_samples = 128
-    val_samples = 32
+    train_samples = 256
+    val_samples = 64
     batch_size = 16
-    epochs = 3
+    epochs = 8
     learning_rate = 1e-3
+    residual_mode = True
+    residual_scale = 0.5
 
     device = get_device(prefer_cuda=False)
     train_dataset, val_dataset = build_synthetic_train_val_datasets(
@@ -60,7 +62,11 @@ def main() -> None:
     )
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
 
-    model = UNet(base_channels=16).to(device)
+    model = UNet(
+        base_channels=16,
+        residual_mode=residual_mode,
+        residual_scale=residual_scale,
+    ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_fn = nn.MSELoss()
     history = History()
@@ -73,7 +79,8 @@ def main() -> None:
     print(
         "Config: "
         f"image_size={image_size}, train={train_samples}, val={val_samples}, "
-        f"batch_size={batch_size}, epochs={epochs}, lr={learning_rate}"
+        f"batch_size={batch_size}, epochs={epochs}, lr={learning_rate}, "
+        f"residual_mode={residual_mode}, residual_scale={residual_scale}"
     )
 
     for epoch in range(1, epochs + 1):
@@ -96,13 +103,28 @@ def main() -> None:
                 history=history.to_dict(),
                 metrics={
                     "val_loss": val_metrics.loss,
-                    "val_mse": val_metrics.mse,
-                    "val_psnr": val_metrics.psnr,
-                    "val_ssim": val_metrics.ssim if val_metrics.ssim is not None else float("nan"),
+                    "corrupted_mse": val_metrics.corrupted_mse,
+                    "corrupted_psnr": val_metrics.corrupted_psnr,
+                    "corrupted_ssim": (
+                        val_metrics.corrupted_ssim
+                        if val_metrics.corrupted_ssim is not None
+                        else float("nan")
+                    ),
+                    "restored_mse": val_metrics.restored_mse,
+                    "restored_psnr": val_metrics.restored_psnr,
+                    "restored_ssim": (
+                        val_metrics.restored_ssim
+                        if val_metrics.restored_ssim is not None
+                        else float("nan")
+                    ),
+                    "mse_delta": val_metrics.mse_delta,
+                    "psnr_delta": val_metrics.psnr_delta,
                 },
                 extra={
                     "model": "UNet",
                     "base_channels": 16,
+                    "residual_mode": residual_mode,
+                    "residual_scale": residual_scale,
                     "image_size": image_size,
                     "seed": seed,
                 },
@@ -120,11 +142,24 @@ def main() -> None:
             filename=f"unet_baseline_epoch_{epoch:02d}.png",
         )
 
-        ssim_text = "n/a" if val_metrics.ssim is None else f"{val_metrics.ssim:.4f}"
+        corrupted_ssim = (
+            "n/a"
+            if val_metrics.corrupted_ssim is None
+            else f"{val_metrics.corrupted_ssim:.4f}"
+        )
+        restored_ssim = (
+            "n/a" if val_metrics.restored_ssim is None else f"{val_metrics.restored_ssim:.4f}"
+        )
         print(
             f"Epoch {epoch:02d}/{epochs} | "
-            f"train_loss={train_loss:.6f} | val_loss={val_metrics.loss:.6f} | "
-            f"val_psnr={val_metrics.psnr:.2f} dB | val_ssim={ssim_text} | "
+            f"train_loss={train_loss:.6f} | "
+            f"corrupted_mse={val_metrics.corrupted_mse:.6f} | "
+            f"restored_mse={val_metrics.restored_mse:.6f} | "
+            f"mse_delta={val_metrics.mse_delta:+.6f} | "
+            f"corrupted_psnr={val_metrics.corrupted_psnr:.2f} dB | "
+            f"restored_psnr={val_metrics.restored_psnr:.2f} dB | "
+            f"psnr_delta={val_metrics.psnr_delta:+.2f} dB | "
+            f"corrupted_ssim={corrupted_ssim} | restored_ssim={restored_ssim} | "
             f"sample={sample_path.relative_to(PROJECT_ROOT)}"
         )
 

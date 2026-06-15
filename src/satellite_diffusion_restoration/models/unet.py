@@ -74,8 +74,15 @@ class UNet(nn.Module):
         in_channels: int = 3,
         out_channels: int = 3,
         base_channels: int = 16,
+        residual_mode: bool = True,
+        residual_scale: float = 0.5,
+        bound_residual: bool = True,
     ) -> None:
         super().__init__()
+        self.residual_mode = residual_mode
+        self.residual_scale = residual_scale
+        self.bound_residual = bound_residual
+
         self.encoder1 = DoubleConv(in_channels, base_channels)
         self.encoder2 = Down(base_channels, base_channels * 2)
         self.encoder3 = Down(base_channels * 2, base_channels * 4)
@@ -86,7 +93,11 @@ class UNet(nn.Module):
         self.decoder1 = Up(base_channels * 2, base_channels, base_channels)
         self.output_conv = nn.Conv2d(base_channels, out_channels, kernel_size=1)
 
+        if self.residual_mode:
+            self._initialize_identity_residual_head()
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        input_image = x
         skip1 = self.encoder1(x)
         skip2 = self.encoder2(skip1)
         skip3 = self.encoder3(skip2)
@@ -95,4 +106,23 @@ class UNet(nn.Module):
         x = self.decoder3(x, skip3)
         x = self.decoder2(x, skip2)
         x = self.decoder1(x, skip1)
-        return torch.sigmoid(self.output_conv(x))
+        output = self.output_conv(x)
+
+        if not self.residual_mode:
+            return torch.sigmoid(output)
+
+        residual = output
+        if self.bound_residual:
+            residual = torch.tanh(residual) * self.residual_scale
+        return (input_image + residual).clamp(0.0, 1.0)
+
+    def predict_residual(self, x: torch.Tensor) -> torch.Tensor:
+        """Return the learned residual correction for debugging."""
+        restored = self.forward(x)
+        return restored - x
+
+    def _initialize_identity_residual_head(self) -> None:
+        """Start residual mode as an identity mapping: restored equals corrupted."""
+        nn.init.zeros_(self.output_conv.weight)
+        if self.output_conv.bias is not None:
+            nn.init.zeros_(self.output_conv.bias)

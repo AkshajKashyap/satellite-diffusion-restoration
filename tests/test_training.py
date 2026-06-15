@@ -21,7 +21,7 @@ def test_tiny_training_step_runs():
         corruption_config=CorruptionConfig(cloud_probability=0.0, mask_probability=0.0),
     )
     dataloader = DataLoader(dataset, batch_size=2)
-    model = UNet(base_channels=4)
+    model = UNet(base_channels=4, residual_mode=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
     loss = train_one_epoch(model, dataloader, optimizer, torch.device("cpu"))
@@ -29,12 +29,35 @@ def test_tiny_training_step_runs():
 
     assert loss > 0
     assert metrics.loss > 0
-    assert metrics.ssim is None
+    assert metrics.corrupted_mse > 0
+    assert metrics.restored_mse > 0
+    assert metrics.corrupted_psnr > 0
+    assert metrics.restored_psnr > 0
+    assert metrics.corrupted_ssim is None
+    assert metrics.restored_ssim is None
+
+
+def test_evaluation_returns_baseline_and_model_metrics():
+    dataset = SyntheticSatelliteDataset(
+        num_samples=2,
+        image_size=32,
+        seed=19,
+        corruption_config=CorruptionConfig(cloud_probability=0.0, mask_probability=0.0),
+    )
+    dataloader = DataLoader(dataset, batch_size=2)
+    model = UNet(base_channels=4, residual_mode=True)
+
+    metrics = evaluate(model, dataloader, torch.device("cpu"), compute_ssim=False)
+
+    assert metrics.corrupted_mse == metrics.restored_mse
+    assert metrics.corrupted_psnr == metrics.restored_psnr
+    assert metrics.mse_delta == 0
+    assert metrics.psnr_delta == 0
 
 
 def test_checkpoint_save_load_round_trip(tmp_path: Path):
     checkpoint_path = tmp_path / "model.pt"
-    model = UNet(base_channels=4)
+    model = UNet(base_channels=4, residual_mode=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
     save_checkpoint(
@@ -46,7 +69,7 @@ def test_checkpoint_save_load_round_trip(tmp_path: Path):
         metrics={"val_psnr": 12.3},
     )
 
-    loaded_model = UNet(base_channels=4)
+    loaded_model = UNet(base_channels=4, residual_mode=True)
     loaded_optimizer = torch.optim.Adam(loaded_model.parameters(), lr=1e-3)
     checkpoint = load_checkpoint(
         checkpoint_path,

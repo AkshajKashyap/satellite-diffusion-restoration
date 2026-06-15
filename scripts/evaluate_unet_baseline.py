@@ -34,7 +34,13 @@ def main() -> None:
             f"Missing checkpoint: {checkpoint_path}. Run scripts/train_unet_baseline.py first."
         )
 
-    model = UNet(base_channels=16).to(device)
+    checkpoint_preview = torch.load(checkpoint_path, map_location=device)
+    extra = checkpoint_preview.get("extra", {})
+    model = UNet(
+        base_channels=extra.get("base_channels", 16),
+        residual_mode=extra.get("residual_mode", True),
+        residual_scale=extra.get("residual_scale", 0.5),
+    ).to(device)
     checkpoint = load_checkpoint(checkpoint_path, model=model, device=device)
 
     dataset = SyntheticSatelliteDataset(
@@ -63,13 +69,28 @@ def main() -> None:
             )
         )
 
-    ssim_text = "n/a" if metrics.ssim is None else f"{metrics.ssim:.4f}"
+    corrupted_ssim = "n/a" if metrics.corrupted_ssim is None else f"{metrics.corrupted_ssim:.4f}"
+    restored_ssim = "n/a" if metrics.restored_ssim is None else f"{metrics.restored_ssim:.4f}"
     print("U-Net baseline evaluation")
     print(f"Checkpoint: {checkpoint_path.relative_to(PROJECT_ROOT)}")
     print(f"Checkpoint epoch: {checkpoint.get('epoch', 'unknown')}")
-    print(f"MSE: {metrics.mse:.6f}")
-    print(f"PSNR: {metrics.psnr:.2f} dB")
-    print(f"SSIM: {ssim_text}")
+    print(
+        "Corrupted input vs clean: "
+        f"MSE={metrics.corrupted_mse:.6f}, "
+        f"PSNR={metrics.corrupted_psnr:.2f} dB, "
+        f"SSIM={corrupted_ssim}"
+    )
+    print(
+        "Restored model vs clean: "
+        f"MSE={metrics.restored_mse:.6f}, "
+        f"PSNR={metrics.restored_psnr:.2f} dB, "
+        f"SSIM={restored_ssim}"
+    )
+    print(
+        "Improvement: "
+        f"MSE delta={metrics.mse_delta:+.6f}, "
+        f"PSNR delta={metrics.psnr_delta:+.2f} dB"
+    )
     print("Saved comparison grids:")
     for path in saved_paths:
         print(f"  - {path.relative_to(PROJECT_ROOT)}")

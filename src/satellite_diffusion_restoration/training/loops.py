@@ -16,9 +16,37 @@ class EvalMetrics:
     """Aggregate validation metrics."""
 
     loss: float
-    mse: float
-    psnr: float
-    ssim: float | None
+    corrupted_mse: float
+    corrupted_psnr: float
+    corrupted_ssim: float | None
+    restored_mse: float
+    restored_psnr: float
+    restored_ssim: float | None
+
+    @property
+    def mse_delta(self) -> float:
+        """Positive means the restored output reduced MSE vs the corrupted input."""
+        return self.corrupted_mse - self.restored_mse
+
+    @property
+    def psnr_delta(self) -> float:
+        """Positive means the restored output improved PSNR vs the corrupted input."""
+        return self.restored_psnr - self.corrupted_psnr
+
+    @property
+    def mse(self) -> float:
+        """Backward-compatible alias for restored MSE."""
+        return self.restored_mse
+
+    @property
+    def psnr(self) -> float:
+        """Backward-compatible alias for restored PSNR."""
+        return self.restored_psnr
+
+    @property
+    def ssim(self) -> float | None:
+        """Backward-compatible alias for restored SSIM."""
+        return self.restored_ssim
 
 
 @dataclass
@@ -83,6 +111,7 @@ def evaluate(
 
     total_loss = 0.0
     total_samples = 0
+    corrupted_inputs = []
     predictions = []
     targets = []
 
@@ -95,19 +124,26 @@ def evaluate(
         batch_size = corrupted.size(0)
         total_loss += float(loss.item()) * batch_size
         total_samples += batch_size
+        corrupted_inputs.append(corrupted.cpu())
         predictions.append(restored.cpu())
         targets.append(clean.cpu())
 
+    corrupted_batch = torch.cat(corrupted_inputs, dim=0)
     prediction_batch = torch.cat(predictions, dim=0)
     target_batch = torch.cat(targets, dim=0)
 
-    ssim_score: float | None = None
+    corrupted_ssim: float | None = None
+    restored_ssim: float | None = None
     if compute_ssim:
-        ssim_score = ssim_batch(prediction_batch, target_batch)
+        corrupted_ssim = ssim_batch(corrupted_batch, target_batch)
+        restored_ssim = ssim_batch(prediction_batch, target_batch)
 
     return EvalMetrics(
         loss=total_loss / max(total_samples, 1),
-        mse=mse(prediction_batch, target_batch),
-        psnr=psnr(prediction_batch, target_batch),
-        ssim=ssim_score,
+        corrupted_mse=mse(corrupted_batch, target_batch),
+        corrupted_psnr=psnr(corrupted_batch, target_batch),
+        corrupted_ssim=corrupted_ssim,
+        restored_mse=mse(prediction_batch, target_batch),
+        restored_psnr=psnr(prediction_batch, target_batch),
+        restored_ssim=restored_ssim,
     )
